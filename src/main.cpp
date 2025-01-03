@@ -1,4 +1,7 @@
 #include <M5Atom.h>
+#include <WiFi.h>
+#include <PubSubClient.h>
+#include "config.h"
 
 const int relayPin = 26; // Relay connected to PH2 pin
 bool relayState = false; // Default mode is off
@@ -14,6 +17,27 @@ unsigned long startTime = 0; // Start time for dimming cycle
 int currentSnowflake = -1; // Current snowflake index
 int currentBrightness = 0; // Current brightness level of the snowflake
 
+
+// WiFi credentials
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
+
+// MQTT broker details
+const char* switch_id = SWITCH_ID; // Unique switch ID
+const char* mqtt_server = MQTT_SERVER;
+const int mqtt_port = MQTT_PORT;
+const char* mqtt_username = MQTT_USERNAME;  // Optional, if required
+const char* mqtt_password = MQTT_PASSWORD;  // Optional, if required
+static unsigned long lastPublish = 0;
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+
+// MQTT topic definitions
+String state_topic = "m5/" + String(switch_id) + "/relay/0";
+String command_topic = "m5/" + String(switch_id) + "/relay/0/command";
+
 // List of snowflakes to skip as being part of icon
 int snowflakeCheckList[] = {5, 6, 7, 10, 11, 12, 13, 15, 16, 17}; // if used instead of empty list then showflakes will not overlay icons; update the list each time icons are modified
 //int snowflakeCheckList[] = {}; 
@@ -27,6 +51,75 @@ void updateSnowflakes();
 
 
 bool isPixelUsedByIcon(int snowflake_idx);
+
+
+
+// Function to connect to WiFi
+void setup_wifi() {
+  delay(10);
+  // Connect to WiFi
+  Serial.println();
+  Serial.print("Connecting to WiFi...");
+  WiFi.begin(ssid, password);
+  
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+  Serial.println(" connected!");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+// function to send out mqtt message with relay state called each time state changes (either as a result of pressing the button, receiving command or periodically)
+void publishRelayState(){
+  String state = relayState ? "on" : "off";
+  client.publish(state_topic.c_str(), state.c_str(), 1);
+}
+
+// Callback function to handle received messages
+void callback(char* topic, byte* payload, unsigned int length) {
+  // Convert payload to string
+  String message = "";
+  for (int i = 0; i < length; i++) {
+    message += (char)payload[i];
+  }
+
+  // Check if the received message is "on" or "off" and set relay state
+  if (String(topic) == String(command_topic)) {
+    if (message == "on") {
+      relayState = true;
+      digitalWrite(relayPin, HIGH); // Turn relay ON
+    } else if (message == "off") {
+      relayState = false;
+      digitalWrite(relayPin, LOW); // Turn relay OFF
+    }
+    publishRelayState();
+  }
+}
+
+// Reconnect to MQTT server
+void reconnect() {
+  // Loop until we are connected
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    
+    // Attempt to connect
+    //if (client.connect("M5StackClient", mqtt_username, mqtt_password)) {
+    if (client.connect(switch_id, mqtt_username, mqtt_password)) {
+      Serial.println("connected");
+      
+      // Subscribe to the command topic
+      client.subscribe(command_topic.c_str()); // Convert String to const char* using c_str()
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      delay(5000);
+    }
+  }
+}
+
 
 
 void setup() {
@@ -52,6 +145,29 @@ void setup() {
     snowflakePositions[j] = temp;
   }
 
+
+  // Start serial communication
+  Serial.begin(115200);
+  
+  // Connect to WiFi
+  setup_wifi();
+  
+  // Set up MQTT client
+  client.setServer(mqtt_server, mqtt_port);
+  client.setCallback(callback);
+  
+  // Connect to MQTT server
+  reconnect();
+  if (client.connected()){
+    publishRelayState();
+  }
+  
+  client.setKeepAlive(60);
+
+  // low power mode
+  //WiFi.setTxPower(WIFI_POWER_MINUS_1dBm);
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(true); 
 }
 
 void loop() {
@@ -69,8 +185,27 @@ void loop() {
       //M5.dis.setBrightness(brightness_low);
     }
     updateDisplay(); // Update display based on new state
+    
+    publishRelayState();
   }
-  delay(100); // Simple debounce delay
+  
+  
+  if (client.connected()){
+    client.loop(); // Process incoming messages
+  }
+  else{
+    reconnect();
+  }
+
+  // Periodically send the relay state to the MQTT topic
+  unsigned long currentMillis = millis();
+  if (currentMillis - lastPublish >= 10000) { // Publish every 10 seconds
+    lastPublish = currentMillis;
+    
+    publishRelayState();
+  }
+  
+  delay(50); // Simple debounce delay
   
   updateDisplay();
   
