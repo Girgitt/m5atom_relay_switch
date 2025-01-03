@@ -15,8 +15,8 @@ int currentSnowflake = -1; // Current snowflake index
 int currentBrightness = 0; // Current brightness level of the snowflake
 
 // List of snowflakes to skip as being part of icon
-//int snowflakeCheckList[] = {5, 10, 15, 6, 7, 16, 17, 13, 0, 4, 20, 24}; 
-int snowflakeCheckList[] = {}; 
+int snowflakeCheckList[] = {5, 6, 7, 10, 11, 12, 13, 15, 16, 17}; // if used instead of empty list then showflakes will not overlay icons; update the list each time icons are modified
+//int snowflakeCheckList[] = {}; 
 int checkListSize = sizeof(snowflakeCheckList) / sizeof(snowflakeCheckList[0]);
 
 // Declare the updateDisplay function before setup and loop
@@ -73,8 +73,10 @@ void loop() {
   delay(100); // Simple debounce delay
   
   updateDisplay();
-  updateSnowflakes();
   
+  if (relayState){
+    updateSnowflakes();
+  }
 }
 
 void updateDisplay() {
@@ -88,20 +90,36 @@ void updateDisplay() {
     int b = 1;
     int currentBrightness = brightness_high;
 
-    int hexColor = int(r * currentBrightness) << 16 | int(g * currentBrightness) << 8 | int(b * currentBrightness); 
+    int hexColor_white = int(r * currentBrightness) << 16 | int(g * currentBrightness) << 8 | int(b * currentBrightness); 
 
-    // Display pattern for "ON" state (Green color for ON)
-    M5.dis.drawpix(5, hexColor);
-    M5.dis.drawpix(10, hexColor);
-    M5.dis.drawpix(15, hexColor);
+    r = 1;
+    g = 0;
+    b = 0;
+    int hexColor_roof = int(r * currentBrightness) << 16 | int(g * currentBrightness) << 8 | int(b * currentBrightness); 
 
-    M5.dis.drawpix(6, hexColor);
-    M5.dis.drawpix(7, hexColor);
+    hexColor_roof = hexColor_white;
 
-    M5.dis.drawpix(16, hexColor);
-    M5.dis.drawpix(17, hexColor);
+    // house walls
+    M5.dis.drawpix(5, hexColor_white);
+    M5.dis.drawpix(6, hexColor_white);
+    M5.dis.drawpix(7, hexColor_roof);
+
+    M5.dis.drawpix(10, hexColor_white);
+    //M5.dis.drawpix(11, hexColor_white);
+    //M5.dis.drawpix(12, hexColor_roof);
+    M5.dis.drawpix(13, hexColor_roof);
+
+    M5.dis.drawpix(15, hexColor_white);
+    M5.dis.drawpix(16, hexColor_white);
+    M5.dis.drawpix(17, hexColor_roof);
     
-    M5.dis.drawpix(13, hexColor);
+
+    //M5.dis.drawpix(2, hexColor);
+    //M5.dis.drawpix(8, hexColor_red);
+    //M5.dis.drawpix(14, hexColor_red);
+    //M5.dis.drawpix(18, hexColor_red);
+    //M5.dis.drawpix(22, hexColor);
+
 
   } else {
     // Display pattern for "OFF" state (Red color for OFF)
@@ -113,10 +131,10 @@ void updateDisplay() {
 
     int hexColor = int(r * currentBrightness) << 16 | int(g * currentBrightness) << 8 | int(b * currentBrightness);
 
-    M5.dis.drawpix(0, hexColor); // Red
-    M5.dis.drawpix(4, hexColor); // Red
-    M5.dis.drawpix(20, hexColor); // Red
-    M5.dis.drawpix(24, hexColor); // Red
+    M5.dis.drawpix(0, hexColor); 
+    M5.dis.drawpix(4, hexColor); 
+    M5.dis.drawpix(20, hexColor); 
+    M5.dis.drawpix(24, hexColor); 
   }
 }
 
@@ -168,11 +186,10 @@ void updateSnowflakes() {
 }
 
 bool isPixelUsedByIcon(int snowflake_idx){
-  bool result = false;
   for (int i = 0; i < checkListSize; i++) {
     if(snowflakePositions[snowflake_idx] == snowflakeCheckList[i]) {
-      result = true;
+      return true;
     }
   }
-  return result;
+  return false;
 }
